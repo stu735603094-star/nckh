@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Thực hành Thoát nạn - THPT Trần Suyền</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; text-align: center; background: #f0f4f8; margin: 0; padding-bottom: 30px; touch-action: manipulation; }
+        .header { background: #003366; color: white; padding: 15px; border-bottom: 4px solid #ff9800; }
+        h2 { margin: 0; font-size: 1.2em; text-transform: uppercase; letter-spacing: 1px; }
+        
+        /* Thanh nhiệm vụ chuẩn theo yêu cầu */
+        .mission { background: #fff3cd; color: #856404; padding: 12px; margin: 5px auto; width: 92%; border-radius: 8px; font-weight: bold; border: 1px solid #ffeeba; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        
+        .map-box { position: relative; width: 96%; max-width: 1000px; margin: 10px auto; background: white; border-radius: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); overflow: hidden; line-height: 0; border: 2px solid #003366; }
+        .map-layers img { width: 100%; height: auto; display: none; pointer-events: none; }
+        .map-layers img.active { display: block; }
+        
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: crosshair; touch-action: none; }
+        
+        .controls { margin: 10px; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+        button { padding: 10px 14px; cursor: pointer; border-radius: 12px; border: 1px solid #003366; font-weight: bold; background: white; font-size: 0.85em; transition: 0.2s; }
+        button.active { background: #003366 !important; color: white !important; }
+        
+        .btn-check { background: #28a745 !important; color: white !important; border: none; }
+        .btn-clear { background: #dc3545 !important; color: white !important; border: none; }
+        .btn-download { background: #007bff !important; color: white !important; border: none; }
+
+        #result-msg { margin: 10px auto; padding: 12px; border-radius: 8px; display: none; font-size: 1em; font-weight: bold; width: 90%; line-height: 1.4; border: 2px solid transparent; }
+        .success { background: #d4edda; color: #155724; border-color: #c3e6cb !important; display: block !important; }
+        .fail { background: #f8d7da; color: #721c24; border-color: #f5c6cb !important; display: block !important; }
+
+        /* Overlay dành riêng cho di động để lưu ảnh */
+        #photo-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        #photo-overlay img { max-width: 95%; max-height: 75%; border: 3px solid #ff9800; border-radius: 5px; margin-bottom: 15px; }
+        .btn-close { background: white; color: black; padding: 10px 25px; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>MÔ PHỎNG THOÁT NẠN PHÚ HÒA</h2>
+</div>
+
+<div class="mission">
+    Nhiệm vụ: Hãy tìm các tuyến đường an toàn, khu vực an toàn, và vùng an toàn để di chuyển từ khu vực nguy cơ đến nơi an toàn.
+</div>
+
+<div class="controls">
+    <button onclick="setLayer('GTHONG', this)" class="active">Giao thông</button>
+    <button onclick="setLayer('MOHINHSODOCAO', this)">Địa hình</button>
+    <button onclick="setLayer('CAP1', this)">Báo động 1</button>
+    <button onclick="setLayer('CAP2', this)">Báo động 2</button>
+    <button onclick="setLayer('CAP3', this)">Báo động 3</button>
+    <button class="btn-clear" onclick="clearCanvas()">🧹 Xóa vẽ</button>
+    <button class="btn-check" onclick="checkResult()">✅ KIỂM TRA</button>
+    <button class="btn-download" onclick="nopBai()">💾 NỘP BÀI</button>
+</div>
+
+<div class="map-box" id="capture-area">
+    <div class="map-layers">
+        <img src="GTHONG.png" id="img-GTHONG" class="active">
+        <img src="MOHINHSODOCAO.png" id="img-MOHINHSODOCAO">
+        <img src="CAP1.png" id="img-CAP1">
+        <img src="CAP2.png" id="img-CAP2">
+        <img src="CAP3.png" id="img-CAP3">
+    </div>
+    <canvas id="canvas"></canvas>
+</div>
+
+<div id="result-msg"></div>
+
+<div id="photo-overlay">
+    <p style="margin-bottom: 10px;">📱 NHẤN GIỮ VÀO ẢNH ĐỂ LƯU</p>
+    <img id="result-photo" src="">
+    <button class="btn-close" onclick="closeOverlay()">QUAY LẠI</button>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('capture-area');
+    let drawing = false;
+    let endX, endY;
+    let currentLevel = 'GTHONG';
+
+    function resize() {
+        const activeImg = document.querySelector('.map-layers img.active');
+        if (activeImg) {
+            canvas.width = container.offsetWidth;
+            canvas.height = activeImg.offsetHeight;
+        }
+    }
+    
+    window.onload = () => { setTimeout(resize, 500); };
+    window.onresize = resize;
+
+    function setLayer(id, btn) {
+        currentLevel = id;
+        // Lưu lại nét vẽ trước khi đổi lớp
+        const temp = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        document.querySelectorAll('.map-layers img').forEach(img => img.classList.remove('active'));
+        document.getElementById('img-' + id).classList.add('active');
+        document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        setTimeout(() => {
+            resize();
+            ctx.putImageData(temp, 0, 0);
+        }, 50);
+        document.getElementById('result-msg').style.display = 'none';
+    }
+
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        let clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        let clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        return {
+            x: (clientX - rect.left) * (canvas.width / rect.width),
+            y: (clientY - rect.top) * (canvas.height / rect.height)
+        };
+    }
+
+    function startDraw(e) { drawing = true; ctx.beginPath(); const pos = getPos(e); ctx.moveTo(pos.x, pos.y); }
+    function draw(e) {
+        if (!drawing) return;
+        const pos = getPos(e);
+        ctx.lineWidth = 4; ctx.strokeStyle = '#e60000'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.lineTo(pos.x, pos.y); ctx.stroke();
+        endX = pos.x; endY = pos.y;
+        if(e.cancelable) e.preventDefault();
+    }
+    function stopDraw() { drawing = false; }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive:false});
+    canvas.addEventListener('touchmove', draw, {passive:false});
+    canvas.addEventListener('touchend', stopDraw);
+
+    function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); endX = null; document.getElementById('result-msg').style.display = 'none'; }
+
+    function checkResult() {
+        const msg = document.getElementById('result-msg');
+        if (!endX) { alert("Em hãy vẽ lộ trình thoát nạn trước!"); return; }
+
+        const pX = endX / canvas.width;
+        const pY = endY / canvas.height;
+
+        // TỌA ĐỘ CHUẨN DỰA TRÊN ẢNH THỰC TẾ
+        const isTranSuyen = (pX > 0.35 && pX < 0.45 && pY > 0.35 && pY < 0.52);
+        const isBVPhoHoa = (pX > 0.45 && pX < 0.55 && pY > 0.22 && pY < 0.38);
+        const isDenTho = (pX > 0.60 && pX < 0.85 && pY > 0.35 && pY < 0.65);
+
+        let logicDung = false;
+        if (currentLevel === 'CAP1' || currentLevel === 'GTHONG') {
+            if (isTranSuyen || isBVPhoHoa || isDenTho) logicDung = true;
+        } else {
+            // Cấp 2 & 3: Ưu tiên tuyệt đối tại điểm tập kết Trường Trần Suyền
+            if (isTranSuyen) logicDung = true;
+        }
+
+        if (logicDung) {
+            msg.innerHTML = "✅ TUYỆT VỜI! Em đã tìm được tuyến đường và điểm đến an toàn.";
+            msg.className = "success";
+        } else {
+            msg.innerHTML = "❌ CẢNH BÁO: Vị trí này có nguy cơ ngập sâu hoặc chưa đến đích an toàn. Hãy xác định lại!";
+            msg.className = "fail";
+        }
+        msg.style.display = "block";
+    }
+
+    function nopBai() {
+        const btn = document.querySelector('.btn-download');
+        btn.innerHTML = "⌛ ĐANG TẠO FILE...";
+        html2canvas(document.getElementById('capture-area'), {useCORS: true}).then(canvasRes => {
+            const dataUrl = canvasRes.toDataURL("image/png");
+            // Cho máy tính: Tải về
+            const link = document.createElement('a');
+            link.download = 'BaiLam_ThoatNan_PhuHoa.png';
+            link.href = dataUrl;
+            link.click();
+            // Cho điện thoại: Hiện Overlay
+            document.getElementById('result-photo').src = dataUrl;
+            document.getElementById('photo-overlay').style.display = 'flex';
+            btn.innerHTML = "💾 NỘP BÀI";
+        });
+    }
+
+    function closeOverlay() { document.getElementById('photo-overlay').style.display = 'none'; }
+</script>
+</body>
+</html>
